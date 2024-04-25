@@ -83,10 +83,64 @@
         </div>
     </div>
     <script>
-        fetch('/api/events')
-            .then(response => response.json())
-            .then(events => showEvents(events))
-            .catch(err => console.error('Error', err));
+
+        let controllers = [];
+        fetch('api/events')
+            .then(response => {
+                if (response.status !== 200) {
+                    console.log('Something Went Wrong');
+                }
+                return response.json()
+            })
+            .then(events => {
+                showEvents(events)
+                events.forEach(async event => {
+                    let controller = new AbortController();
+                    controllers.push(controller);
+                    const response = await fetch(`api/cover/${event.id}`, {
+                        signal: controller.signal
+                    })
+                    const reader = response.body.getReader()
+                    const total = response.headers.get('Content-Length') || 0;
+
+                    let chunks = []
+                    let received = 0
+                    while(true){
+                        const {done, value} = await reader.read();
+                        if (value) {
+                            chunks.push(value)
+                            received += value.length
+
+                            showProgress(total === 0 ? 'N/A' : Math.ceil(100*received/total) + '%',)
+                        }
+                        if (done) break;
+                    }
+                    removeProgress(event.id)
+                    var img = decodeChunks(chunks)
+                    showImage(img, event.id)
+                })
+            });
+
+        function abort() {
+            controllers.forEach(controller => controller.abort())
+        }
+
+        function addToCart(id, quantity) {
+            fetch('/api/cart', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ id: id, quantity: quantity })
+            })
+                .then(response => {
+                    if (response.status === 200) {
+                        fetch('/api/cart')
+                            .then(response => response.json())
+                            .then(cart => updateCart(cart))
+                    }
+                })
+        }
     </script>
 </body>
 
