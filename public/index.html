@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="css/styles.css">
     <script src="js/helpers.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.2.1/axios.min.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Globoticket</title>
 </head>
@@ -54,92 +55,60 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr class="align-middle">
-                            <td>
-                                <img class="img-fluid max-100" src="img/logos/Container-Enthusiasm-TalkDocker-To-Me.png"
-                                    alt="Cover" />
-                            </td>
-                            <td class="max-50">
-                                10/1/2025, 7:00:00 PM
-                            </td>
-                            <td class="max-50">
-                                Talk Docker to Me Tour
-                            </td>
-                            <td class="max-50">
-                                Container Enthusiasm
-                            </td>
-                            <td class="max-50">
-                                $49.99
-                            </td>
-                            <td class="max-50">
-                                <button type="button" class="btn btn-primary btn-primary-themed btn-md font-upper"
-                                    onclick="document.getElementById('spanTickets').innerHTML = ++(document.getElementById('spanTickets').innerHTML)">Add
-                                    to Cart</button>
-                            </td>
-                        </tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
     <script>
-
-        let controllers = [];
-        fetch('api/events')
-            .then(response => {
-                if (response.status !== 200) {
-                    console.log('Something Went Wrong');
-                }
-                return response.json()
-            })
-            .then(events => {
-                showEvents(events)
-                events.forEach(async event => {
-                    let controller = new AbortController();
-                    controllers.push(controller);
-                    const response = await fetch(`api/cover/${event.id}`, {
-                        signal: controller.signal
-                    })
-                    const reader = response.body.getReader()
-                    const total = response.headers.get('Content-Length') || 0;
-
-                    let chunks = []
-                    let received = 0
-                    while(true){
-                        const {done, value} = await reader.read();
-                        if (value) {
-                            chunks.push(value)
-                            received += value.length
-
-                            showProgress(total === 0 ? 'N/A' : Math.ceil(100*received/total) + '%',)
-                        }
-                        if (done) break;
-                    }
-                    removeProgress(event.id)
-                    var img = decodeChunks(chunks)
-                    showImage(img, event.id)
+        axios.get('api/events')
+        .then(response => {
+            const events = response.data
+            showEvents(response.data)
+            events.forEach(event => {
+                axios({
+                    method: 'GET',
+                    url: `api/cover/${event.id}`,
+                    onDownloadProgress: (e) => showProgress(
+                        e.progress ? Math.round(100 * e.progress) + ' %' : 'N/A',
+                        event.id
+                    )
                 })
-            });
-
-        function abort() {
-            controllers.forEach(controller => controller.abort())
-        }
-
-        function addToCart(id, quantity) {
-            fetch('/api/cart', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ id: id, quantity: quantity })
-            })
                 .then(response => {
-                    if (response.status === 200) {
-                        fetch('/api/cart')
-                            .then(response => response.json())
-                            .then(cart => updateCart(cart))
-                    }
+                    removeProgress(event.id);
+                    showImage(response.data, event.id)
                 })
+            })
+        })
+        .catch(error => {
+            if(error.response){
+                showError(JSON.stringify(error.response.data));
+            } else {
+                showError('Something went wrong')
+            }
+        })
+
+        function addToCart(id, quantity){
+            axios({
+                method: 'POST',
+                url: 'api/cart',
+                headers: {
+                    'Content-Type' : 'application/json'
+                },
+                data: {
+                    id: id,
+                    quantity: quantity
+                }
+            })
+            .then(response => {
+                if(response.status === 200){
+                    axios({
+                        method: 'GET',
+                        url: 'api/cart'
+                    })
+                    .then(response => updateCart(response.data))
+                }
+            })
         }
     </script>
 </body>
